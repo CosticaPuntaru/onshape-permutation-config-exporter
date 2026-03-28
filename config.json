@@ -31,9 +31,6 @@
           }
         }
       ],
-      "rotation": {
-        "x": -90
-      },
       "style": {
         "metalness": 0.8,
         "roughness": 0.15
@@ -41,7 +38,7 @@
     },
     {
       "name": "cup-holder",
-      "url": "https://cad.onshape.com/documents/cf6ebb8f1af6fab7433b0be8/w/224ae78e42e1008a02486291/e/4dc1711dd3ebd1924cdd6c9e",
+      "url": "https://cad.onshape.com/documents/cf6ebb8f1af6fab7433b0be8/w/224ae78e42e1008a02486291/e/4dc1711dd3ebd1924cdd6c9e?configuration=BigRadius%3D0.04%2Bmeter%3BBottomHole%3D0.02%2Bmeter%3BBottomThickness%3D0.003%2Bmeter%3BHasBottom%3Dtrue%3BList_RqZu4BDdNYk1gs%3DDefault%3BSmalRadius%3D0.04%2Bmeter%3BThickness%3D0.003%2Bmeter%3Bheight%3D0.02%2Bmeter&renderMode=0&uiState=69c83f1c2ad600c270954cdd",
       "formats": [
         "STL",
         "STEP",
@@ -54,23 +51,18 @@
           "props": {
             "Connector": [
               "Large",
-              "Mid",
               "Small"
             ],
             "BigRadius": [
               "30 mm",
-              "45 mm",
-              "60 mm"
+              "50 mm"
             ],
             "SmallRadius": [
               "30 mm",
-              "45 mm",
-              "60 mm"
+              "50 mm"
             ],
             "Height": [
-              "20 mm",
-              "40 mm",
-              "60 mm"
+              "20 mm"
             ],
             "HasBottom": [
               false
@@ -79,6 +71,7 @@
         },
         {
           "name": "with-bottom",
+          "disable": true,
           "props": {
             "Connector": [
               "Large",
@@ -97,8 +90,7 @@
             ],
             "Height": [
               "20 mm",
-              "40 mm",
-              "60 mm"
+              "40 mm"
             ],
             "HasBottom": [
               true

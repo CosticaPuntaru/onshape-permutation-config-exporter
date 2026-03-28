@@ -54,6 +54,7 @@ def stl_to_step(input_path, output_path):
         gmsh.initialize()
         gmsh.option.setNumber("General.Terminal", 1)
         gmsh.option.setNumber("General.Verbosity", 4)
+        gmsh.option.setNumber("General.NumThreads", 4)
         
         def print_counts(label):
             counts = [len(gmsh.model.getEntities(t)) for t in [0, 1, 2, 3]]
@@ -230,7 +231,13 @@ function runConverter(format, stlPath, outputPath) {
             stdout += data.toString();
         });
 
+        const timeout = setTimeout(() => {
+            proc.kill();
+            reject(new Error("Local conversion timed out (max 2 minutes). Try adjusting geometry or increasing timeout."));
+        }, 120000); // 2 minute timeout
+
         proc.on('close', (code) => {
+            clearTimeout(timeout);
             if (code === 0) {
                 // Basic Validation
                 try {

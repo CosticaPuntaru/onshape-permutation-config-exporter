@@ -15,7 +15,7 @@ import prompts from 'prompts';
  */
 
 const verbose = process.env.LOG_LEVEL === 'silly';
-let currentStatusText = "";
+let activeTasks = new Map(); // Store active task statuses by numerical ID
 let hasPython = false;
 
 async function loadConfig() {
@@ -60,7 +60,7 @@ async function loadConfig() {
     if (!fs.existsSync(jsonPath)) {
         // Create an empty default template if completely missing
         const defaultTemplate = {
-            settings: { maxConcurrent: 3 },
+            settings: { maxConcurrent: 5 },
             credentials: {},
             models: []
         };
@@ -115,12 +115,27 @@ function getHeaders(config, method, url, contentType = 'application/json') {
     return headers;
 }
 
+async function fetchWithTimeout(url, options = {}, timeout = 60000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        throw error;
+    }
+}
+
 async function fetchModelConfiguration(config, model) {
     const parts = model.url.split('/');
-    const [did, wid, eid] = [parts[4], parts[6], parts[8]];
+    const did = parts[4]?.split('?')[0];
+    const wid = parts[6]?.split('?')[0];
+    const eid = parts[8]?.split('?')[0];
     const apiUrl = `https://cad.onshape.com/api/elements/d/${did}/w/${wid}/e/${eid}/configuration`;
     
-    const res = await fetch(apiUrl, { 
+    const res = await fetchWithTimeout(apiUrl, { 
         headers: getHeaders(config, 'GET', apiUrl, 'application/vnd.onshape.v1+json') 
     });
     
@@ -128,10 +143,10 @@ async function fetchModelConfiguration(config, model) {
     return await res.json();
 }
 
-async function exportVariation(config, model, format, props) {
+async function exportVariation(config, model, format, props, forceOverwrite = false) {
     const filePath = getFilePath(model, format, props);
 
-    if (fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath) && !forceOverwrite) {
         if (verbose) console.log(`⏩ [${format}] Skipping: ${path.basename(filePath)}`);
         return filePath;
     }
@@ -140,45 +155,55 @@ async function exportVariation(config, model, format, props) {
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
     // Local Format Handling (Try local first, then fallback to Cloud)
+    const taskKey = `${format}-${path.basename(filePath)}`;
     if (format === '3MF' || format === 'STEP') {
-        const stlPath = await exportVariation(config, model, 'STL', props);
+        const stlPath = await exportVariation(config, model, 'STL', props, forceOverwrite);
         if (stlPath) {
             try {
                 if (verbose) console.log(`🔄 [${format}] Attempting Local Conversion: ${path.basename(filePath)}`);
-                currentStatusText = `${format} (Local): ${path.basename(filePath)}`;
+                activeTasks.set(taskKey, `${format} (Local): ${path.basename(filePath)}`);
+                
                 if (format === '3MF') await convertTo3MF(stlPath, filePath);
                 if (format === 'STEP') await convertToSTEP(stlPath, filePath);
+                
+                activeTasks.delete(taskKey);
                 return filePath;
             } catch (err) {
                 // If local failed, we fall through to the Cloud translation below.
                 console.log(`\n   \x1b[33m⚠️  Local conversion failed for ${path.basename(filePath)}. Falling back to Cloud API...\x1b[0m`);
                 if (verbose) console.log(`⚠️ [${format}] Local fallback error: ${err.message}`);
-                currentStatusText = `Falling back to Cloud: ${path.basename(filePath)}`;
+                activeTasks.set(taskKey, `Fall-back to Cloud: ${path.basename(filePath)}`);
             }
         }
     }
 
     const parts = model.url.split('/');
-    const [did, wid, eid] = [parts[4], parts[6], parts[8]];
+    const did = parts[4]?.split('?')[0];
+    const wid = parts[6]?.split('?')[0];
+    const eid = parts[8]?.split('?')[0];
     
     const entries = Object.entries(props);
     const configStr = entries.map(([k, v]) => `${k}=${String(v).replace(/ /g, '+')}`).join(';');
     const propsFileNamePart = entries.map(([k, v]) => `${k}_${String(v).replace(/ /g, '-')}`).join('_').replace(/[&=;]/g, '_');
     const fileName = `${model.name}_${propsFileNamePart}`;
-    currentStatusText = `${format}: ${fileName}`;
+    activeTasks.set(taskKey, `${format}: ${fileName}`);
 
     const apiUrl = `https://cad.onshape.com/api/partstudios/d/${did}/w/${wid}/e/${eid}/translations`;
     
     try {
         // 1. Trigger Translation
-        const triggerRes = await fetch(apiUrl, {
+        const triggerRes = await fetchWithTimeout(apiUrl, {
             method: 'POST',
             headers: getHeaders(config, 'POST', apiUrl),
             body: JSON.stringify({
                 formatName: format,
                 destinationName: `${model.name}_${propsFileNamePart}`,
                 configuration: configStr,
-                storeInDocument: false
+                storeInDocument: false,
+                // --- Format-Specific Settings ---
+                ...(format === 'STL' ? { units: "millimeter", yAxisUp: false, resolution: "fine", binarize: true } : {}),
+                ...(format === 'STEP' ? { stepVersion: "AP242" } : {}),
+                ...(format === '3MF' ? { resolution: "fine" } : {})
             })
         });
 
@@ -188,13 +213,20 @@ async function exportVariation(config, model, format, props) {
         const translationId = job.id;
 
         // 2. Poll Status
+        // 2. Poll Status (with 5-minute total timeout)
         let status = 'ACTIVE';
         let externalDataId = '';
+        const pollStart = Date.now();
 
-        while (status === 'ACTIVE') {
-            await new Promise(r => setTimeout(r, 5000));
+        while (status === 'ACTIVE' || status === 'IN_PROGRESS' || status === 'CREATED' || status === 'QUEUED') {
+            if (Date.now() - pollStart > 300000) { // 5 minute safety
+                throw new Error("Translation timed out on Onshape's end.");
+            }
+            await new Promise(r => setTimeout(r, 2000));
             const pollUrl = `https://cad.onshape.com/api/translations/${translationId}`;
-            const pollRes = await fetch(pollUrl, { headers: getHeaders(config, 'GET', pollUrl) });
+            activeTasks.set(taskKey, `${format} (Polling Cloud API): ${fileName}`);
+            
+            const pollRes = await fetchWithTimeout(pollUrl, { headers: getHeaders(config, 'GET', pollUrl) });
             const pollData = await pollRes.json();
             
             status = pollData.requestState;
@@ -207,25 +239,31 @@ async function exportVariation(config, model, format, props) {
             const dlUrl = `https://cad.onshape.com/api/documents/d/${did}/externaldata/${externalDataId}`;
             if (verbose) console.log(`⬇️ [${format}] Downloading: ${path.basename(filePath)}`);
             
-            const dlRes = await fetch(dlUrl, {
+            const dlRes = await fetchWithTimeout(dlUrl, {
                 headers: { ...getHeaders(config, 'GET', dlUrl), 'Accept': 'application/octet-stream' }
-            });
+            }, 300000); // 5 minute timeout for downloads
 
             if (!dlRes.ok) throw new Error(`Download failed (${dlRes.status})`);
             
             await Bun.write(filePath, dlRes);
             if (verbose) console.log(`✅ [${format}] Saved: ${path.basename(filePath)}`);
+            activeTasks.delete(taskKey);
             return filePath;
         }
     } catch (err) {
         console.error(`❌ [${format}] Error (${path.basename(filePath)}):`, err.message);
     }
+    activeTasks.delete(taskKey);
     return null;
 }
 
 function expandPermutations(permutations) {
     const result = [];
     for (const group of permutations) {
+        if (group.disable) {
+            // console.log(`⏭️  Skipping disabled permutation set: ${group.name}`);
+            continue;
+        }
         const keys = Object.keys(group.props);
         if (keys.length === 0) continue;
         const combos = [{}];
@@ -256,17 +294,23 @@ function getFilePath(model, format, props) {
 /**
  * Simple Concurrency Queue with Spinner and Status
  */
-async function runWithLimit(tasks, limit, progressLabel = "Processing") {
+async function runWithLimit(tasks, limit, progressLabel = "Processing", initialCompleted = 0, initialTotal = null) {
     const results = [];
     const executing = new Set();
-    let completed = 0;
-    const total = tasks.length;
+    let completed = initialCompleted;
+    let failedCount = 0;
+    const total = initialTotal !== null ? initialTotal : tasks.length;
     const spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let spinnerIdx = 0;
 
+    const startTime = Date.now();
     const render = () => {
         const s = spinner[spinnerIdx];
-        const status = currentStatusText ? ` \x1b[90m― ${currentStatusText.substring(0, 60)}${currentStatusText.length > 60 ? '...' : ''}\x1b[0m` : "";
+        const statusList = Array.from(activeTasks.values());
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const status = statusList.length > 0 
+            ? ` \x1b[90m― ${statusList.join(' | ').substring(0, 80)}${statusList.join(' | ').length > 80 ? '...' : ''} (${elapsed}s)\x1b[0m` 
+            : "";
         process.stdout.write(`\r   \x1b[35m${s}\x1b[0m \x1b[36m${progressLabel}: [${completed}/${total}]\x1b[0m${status}\x1b[K`);
     };
 
@@ -276,12 +320,17 @@ async function runWithLimit(tasks, limit, progressLabel = "Processing") {
     }, 80);
 
     for (const task of tasks) {
-        const p = task().then(res => {
-            executing.delete(p);
-            completed++;
-            render();
-            return res;
-        });
+        const p = task()
+            .catch(err => {
+                failedCount++;
+                console.error(`\n   \x1b[31m❌ Task Error:\x1b[0m`, err.message);
+                return null;
+            })
+            .finally(() => {
+                executing.delete(p);
+                completed++;
+                render();
+            });
         results.push(p);
         executing.add(p);
         if (executing.size >= limit) {
@@ -292,8 +341,8 @@ async function runWithLimit(tasks, limit, progressLabel = "Processing") {
     await Promise.all(results);
     clearInterval(interval);
     process.stdout.write(`\r   \x1b[32m✔\x1b[0m \x1b[36m${progressLabel}: [${total}/${total}] Complete!\x1b[0m${' '.repeat(80)}\n`);
-    currentStatusText = "";
-    return results;
+    activeTasks.clear();
+    return { results, failedCount };
 }
 
 async function bulkConvert(folderPath, targetFormats = ['STEP', '3MF']) {
@@ -332,11 +381,15 @@ async function bulkConvert(folderPath, targetFormats = ['STEP', '3MF']) {
             }
 
             tasks.push(async () => {
+                const label = path.basename(file);
+                activeTasks.set(file, label);
                 try {
-                    if (fmt === 'STEP') await convertToSTEP(stlPath, outPath);
                     if (fmt === '3MF') await convertTo3MF(stlPath, outPath);
+                    if (fmt === 'STEP') await convertToSTEP(stlPath, outPath);
                 } catch (err) {
-                    console.error(`❌ [${fmt}] Failed conversion for ${file}:`, err.message);
+                    console.error(`\n❌ Failed to convert ${label}:`, err.message);
+                } finally {
+                    activeTasks.delete(file);
                 }
             });
         }
@@ -354,13 +407,18 @@ async function bulkConvert(folderPath, targetFormats = ['STEP', '3MF']) {
         limit = config.settings.maxConcurrent;
     } catch(e) {}
 
-    await runWithLimit(tasks, limit, "Converting");
-    console.log(`\n✨ Bulk conversion complete!`);
+    const { failedCount } = await runWithLimit(tasks, limit, "Converting");
+    console.log(`\n✨ Bulk conversion complete!\n`);
+
+    if (failedCount > 0) {
+        console.log(`⚠️  \x1b[1;33mWarning: ${failedCount} tasks failed.\x1b[0m Please review the errors above.`);
+        await prompts({ type: 'text', name: 'wait', message: 'Press Enter to continue...' });
+    }
 }
 
-async function spawnPreview(folderPath, rotation = "{}", translation = "{}", style = "{}", maxSamples = 25, tileSize = 280) {
+async function spawnPreview(folderPath, rotation = "{}", translation = "{}", style = "{}", maxSamples = 25, tileSize = 280, force = false) {
     try {
-        await generatePreview(folderPath, rotation, translation, style, maxSamples, tileSize);
+        await generatePreview(folderPath, rotation, translation, style, maxSamples, tileSize, force);
     } catch (err) {
         console.error(`❌ Preview generation failed for ${folderPath}:`, err.message);
     }
@@ -413,6 +471,15 @@ function buildExportSummary(selected) {
         let groupBreakdowns = [];
         if (model.permutations && model.permutations.length > 0) {
             for (const group of model.permutations) {
+                if (group.disable) {
+                    groupBreakdowns.push({ 
+                        name: group.name, 
+                        count: 0, 
+                        formula: "Disabled",
+                        disabled: true
+                    });
+                    continue;
+                }
                 const props = group.props;
                 const groupCount = Object.values(props).reduce((acc, v) => acc * v.length, 1);
                 const formula = Object.entries(props)
@@ -421,7 +488,8 @@ function buildExportSummary(selected) {
                 groupBreakdowns.push({ 
                     name: group.name, 
                     count: groupCount, 
-                    formula: formula 
+                    formula: formula,
+                    disabled: false
                 });
             }
         }
@@ -446,8 +514,10 @@ function buildExportSummary(selected) {
     return { rows, grandVariants, grandTotalFiles, grandExisting, grandDownloads, grandConversions };
 }
 
-async function handleExport(config, selected) {
+async function handleExport(config, selected, forceOverwrite = false) {
     const tasks = [];
+    let totalExpected = 0;
+
     for (const model of selected) {
         const localFormats = model.formats.filter(f => f === '3MF' || f === 'STEP');
         const remoteFormats = model.formats.filter(f => f !== '3MF' && f !== 'STEP');
@@ -459,43 +529,100 @@ async function handleExport(config, selected) {
             continue;
         }
         for (const props of effectivePropSets) {
-            if (localFormats.length > 0 || model.formats.includes('STL')) {
+            totalExpected++;
+            // Check cache before even adding to queue
+            const allExist = [
+                ...model.formats
+            ].every(fmt => fs.existsSync(getFilePath(model, fmt, props)));
+
+            if (allExist && !forceOverwrite) {
+                continue;
+            }
+
+            if (remoteFormats.includes('STL') || localFormats.length > 0) {
                 tasks.push(async () => {
-                    const stlPath = await exportVariation(config, model, 'STL', props);
+                    const stlPath = await exportVariation(config, model, 'STL', props, forceOverwrite);
                     if (!stlPath) return;
-                    for (const fmt of localFormats) {
-                        await exportVariation(config, model, fmt, props);
-                    }
+                    await Promise.all(localFormats.map(fmt => 
+                        exportVariation(config, model, fmt, props, forceOverwrite)
+                    ));
                 });
             }
             for (const format of remoteFormats) {
                 if (format === 'STL') continue;
-                tasks.push(() => exportVariation(config, model, format, props));
+                tasks.push(() => exportVariation(config, model, format, props, forceOverwrite));
             }
         }
     }
 
     console.log(`\n🚀 Starting ${tasks.length} exports (Parallel: ${config.settings.maxConcurrent})...\n`);
+    const skipped = totalExpected - tasks.length;
     const start = Date.now();
-    await runWithLimit(tasks, config.settings.maxConcurrent, "Exporting");
-    console.log(`\n✨ Export complete! Total time: ${((Date.now() - start) / 1000).toFixed(1)}s`);
+    const { failedCount } = await runWithLimit(tasks, config.settings.maxConcurrent, "Exporting", skipped, totalExpected);
+    console.log(`\n✨ Export complete! Total time: ${((Date.now() - start) / 1000).toFixed(1)}s\n`);
+
+    if (failedCount > 0) {
+        console.log(`⚠️  \x1b[1;33mWarning: ${failedCount} export tasks failed.\x1b[0m Errors are listed above.`);
+        await prompts({ type: 'text', name: 'wait', message: 'Press Enter to continue before generating previews...' });
+    }
 
     console.log(`\n🎨 Generating previews for exported models...\n`);
     for (const model of selected) {
         if (model.formats.includes("STL")) {
             const folderPath = path.join(process.cwd(), 'dist', model.name, 'STL');
             if (fs.existsSync(folderPath)) {
-                console.log(`\n➡️ Generating preview for: ${model.name}`);
-                const rotation = model.rotation ? JSON.stringify(model.rotation) : "{}";
-                const translation = model.translation ? JSON.stringify(model.translation) : "{}";
-                const style = model.style ? JSON.stringify(model.style) : "{}";
-                await spawnPreview(folderPath, rotation, translation, style, config.settings.previewSamples, config.settings.previewTileSize);
+                const stlFiles = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.stl'));
+                if (stlFiles.length > 0) {
+                    console.log(`\n➡️ Generating preview for: ${model.name} (${stlFiles.length} files found)`);
+                    const rotation = model.rotation ? JSON.stringify(model.rotation) : "{}";
+                    const translation = model.translation ? JSON.stringify(model.translation) : "{}";
+                    const style = model.style ? JSON.stringify(model.style) : "{}";
+                    await spawnPreview(folderPath, rotation, translation, style, config.settings.previewSamples, config.settings.previewTileSize, forceOverwrite);
+                } else {
+                    console.log(`\n⏭️  Skipping preview for ${model.name}: No STL files found in ${folderPath}`);
+                }
+            } else {
+                console.log(`\n⏭️  Skipping preview for ${model.name}: Target directory ${folderPath} does not exist.`);
             }
+        } else {
+            console.log(`\n⏭️  Skipping preview for ${model.name}: 'STL' format not selected in config.json.`);
         }
     }
 }
 
 async function handlePermutations(currentConfig, model) {
+    const modelObj = currentConfig.models.find(m => m.name === model.name);
+    if (!modelObj) return;
+
+    if (!modelObj.permutations) modelObj.permutations = [];
+
+    const choices = [
+        { title: '🔄 Fetch New Group from Onshape', value: 'fetch' },
+        ...modelObj.permutations.map((p, i) => ({
+            title: `${p.disable ? '🔴 [Disabled]' : '🟢 [Enabled] '} — Group: ${p.name || i}`,
+            value: { type: 'toggle', index: i }
+        })),
+        { title: '⬅️ Back', value: 'back' }
+    ];
+
+    const { subAction } = await prompts({
+        type: 'select',
+        name: 'subAction',
+        message: `Manage Permutations for ${model.name}:`,
+        choices
+    });
+
+    if (!subAction || subAction === 'back') return;
+
+    if (subAction.type === 'toggle') {
+        const p = modelObj.permutations[subAction.index];
+        p.disable = !p.disable;
+        saveConfig(currentConfig);
+        console.log(`\n✅ ${p.name || subAction.index} is now ${p.disable ? 'DISABLED' : 'ENABLED'}\n`);
+        return await handlePermutations(currentConfig, model); // Re-show menu
+    }
+
+    // Fetch New Logic
     console.log(`\n🔄 Fetching configuration schema from Onshape for ${model.name}...`);
     let apiConfig;
     try {
@@ -520,7 +647,7 @@ async function handlePermutations(currentConfig, model) {
         let defaultValue = param.message.defaultValue || "";
         
         const fromPropSets = model.propSets ? model.propSets.map(p => p[pId]).filter(v => v !== undefined) : [];
-        const fromPermutations = model.permutations ? model.permutations.flatMap(g => g.props[pId] || []) : [];
+        const fromPermutations = modelObj.permutations ? modelObj.permutations.flatMap(g => g.props[pId] || []) : [];
         const existingValues = [...new Set([...fromPropSets, ...fromPermutations])];
         if (existingValues.length > 0) hint = ` (Current: ${existingValues.join(', ')})`;
         
@@ -609,26 +736,20 @@ async function handlePermutations(currentConfig, model) {
     preview.slice(0, 3).forEach(p => console.log(JSON.stringify(p)));
     if (preview.length > 3) console.log("...");
 
-    const { save } = await prompts({
-        type: 'confirm',
-        name: 'save',
-        message: `Save these ${preview.length} permutations to config.json?`,
-        initial: true
+    const { saveName } = await prompts({
+        type: 'text',
+        name: 'saveName',
+        message: 'Name for this permutation group:',
+        initial: 'onshape'
     });
 
-    if (save) {
-        const modelObj = currentConfig.models.find(m => m.name === model.name);
-        if (modelObj) {
-            if (!modelObj.permutations) modelObj.permutations = [];
-            const existingIdx = modelObj.permutations.findIndex(g => g.name === 'onshape');
-            const group = { name: 'onshape', props: collectedValues };
-            if (existingIdx >= 0) modelObj.permutations[existingIdx] = group;
-            else modelObj.permutations.push(group);
-            saveConfig(currentConfig);
-            console.log(`✅ Saved config.json with updated permutations for ${model.name}`);
-        } else {
-            console.error(`❌ Could not find model ${model.name} in currentConfig to save permutations.`);
-        }
+    if (saveName) {
+        const existingIdx = modelObj.permutations.findIndex(g => g.name === saveName);
+        const group = { name: saveName, props: collectedValues, disable: false };
+        if (existingIdx >= 0) modelObj.permutations[existingIdx] = group;
+        else modelObj.permutations.push(group);
+        saveConfig(currentConfig);
+        console.log(`✅ Saved config.json with updated permutations for ${model.name}`);
     } else {
         console.log(`❌ Discarded permutations.`);
     }
@@ -788,39 +909,61 @@ async function handleModelAction(config, selectedModel, action) {
         if (row.groupBreakdowns && row.groupBreakdowns.length > 0) {
             for (const gb of row.groupBreakdowns) {
                 const label = gb.name && gb.name !== 'onshape' ? `﹂ ${gb.name}` : `﹂ (Config)`;
-                console.log(`     \x1b[90m${label.padEnd(16)} : ${gb.count} (${gb.formula})\x1b[0m`);
+                const status = gb.disabled ? `\x1b[31m(Disabled)\x1b[0m` : `${gb.count} (${gb.formula})`;
+                console.log(`     \x1b[90m${label.padEnd(16)} :\x1b[0m ${status}`);
             }
         }
         console.log(`   📦 Total files     : ${row.totalFiles} (Current formats: ${selectedModel.formats.join(', ')})`);
         console.log(`   ✅ Already exist   : ${row.existing} (Skipping these)`);
         console.log(`${'─'.repeat(60)}`);
 
+        let forceOverwrite = false;
         const newFiles = summary.grandTotalFiles - summary.grandExisting;
         if (newFiles === 0) {
             console.log(`   ✨ Everything is already up to date!`);
-            console.log(`${'─'.repeat(60)}\n`);
-            return;
-        }
-
-        console.log(`\x1b[1m🚀 Action Plan:\x1b[0m`);
-        if (hasPython) {
-            console.log(`   ☁️  Onshape Downloads : ${summary.grandDownloads} (New/Updated parts)`);
-            console.log(`   ⚙️  Local Conversions : ${summary.grandConversions} (STEP/3MF generation)`);
+            const { action } = await prompts({
+                type: 'select',
+                name: 'action',
+                message: 'What would you like to do?',
+                choices: [
+                    { title: 'Skip export & proceed to next step', value: 'skip' },
+                    { title: 'Force overwrite existing files (fix orientation/errors)', value: 'force' },
+                    { title: 'Cancel', value: 'cancel' }
+                ]
+            });
+            if (action === 'cancel') return;
+            if (action === 'force') forceOverwrite = true;
         } else {
-            console.log(`   ☁️  Onshape Downloads : ${newFiles} (Direct Cloud translations)`);
-            console.log(`      \x1b[90m(Note: Using Cloud Fallback because Python is not detected)\x1b[0m`);
-        }
-        console.log(`   ✨ New files total   : ${newFiles}`);
-        console.log(`${'─'.repeat(60)}\n`);
+            console.log(`\x1b[1m🚀 Action Plan:\x1b[0m`);
+            if (hasPython) {
+                console.log(`   ☁️  Onshape Downloads : ${summary.grandDownloads} (New/Updated parts)`);
+                console.log(`   ⚙️  Local Conversions : ${summary.grandConversions} (STEP/3MF generation)`);
+            } else {
+                console.log(`   ☁️  Onshape Downloads : ${newFiles} (Direct Cloud translations)`);
+                console.log(`      \x1b[90m(Note: Using Cloud Fallback because Python is not detected)\x1b[0m`);
+            }
+            console.log(`   ✨ New files total   : ${newFiles}`);
+            
+            if (summary.grandExisting > 0) {
+                console.log(`   📝 Note: ${summary.grandExisting} files already exist and will be skipped.`);
+            }
+            console.log(`${'─'.repeat(60)}\n`);
 
-        const { confirm } = await prompts({
-            type: 'confirm',
-            name: 'confirm',
-            message: `Start the export process?`,
-            initial: true
-        });
-        if (!confirm) { console.log('⬅️  Export cancelled.\n'); return; }
-        await handleExport(config, [selectedModel]);
+            const { startAction } = await prompts({
+                type: 'select',
+                name: 'startAction',
+                message: `Start the export process?`,
+                choices: [
+                    { title: 'Yes, start export (skip existing)', value: 'start' },
+                    { title: 'Yes, overwrite ALL files (recommended if orientation is wrong)', value: 'force' },
+                    { title: 'Cancel', value: 'cancel' }
+                ]
+            });
+            if (startAction === 'cancel') return;
+            if (startAction === 'force') forceOverwrite = true;
+        }
+        
+        await handleExport(config, [selectedModel], forceOverwrite);
     } else if (action === 'convert') {
         const folderPath = path.join(process.cwd(), 'dist', selectedModel.name, 'STL');
         await bulkConvert(folderPath);

@@ -6,7 +6,7 @@ export const ConfigSchema = z.object({
         secretKey: z.string().min(1, "secretKey is required (check .env or config)"),
     }).optional(),
     settings: z.object({
-        maxConcurrent: z.number().int().positive().default(3),
+        maxConcurrent: z.number().int().positive().default(5),
         previewSamples: z.number().int().positive().default(25),
         previewTileSize: z.number().int().min(64).max(1024).default(280),
     }).default({}),
@@ -17,6 +17,7 @@ export const ConfigSchema = z.object({
         propSets: z.array(z.looseObject({})).default([]),
         permutations: z.array(z.object({
             name: z.string().optional(),
+            disable: z.boolean().optional(),
             props: z.record(z.string(), z.array(z.union([z.string(), z.number(), z.boolean()])))
         })).optional(),
         rotation: z.object({
