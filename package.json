@@ -1,6 +1,6 @@
 {
   "name": "onshape-model-exporter",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Multi-model exporter for Onshape with property-based variations and parallel processing.",
   "type": "module",
   "main": "src/index.js",
