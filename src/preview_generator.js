@@ -183,12 +183,16 @@ function renderTile(tris, rotation, translation, color, tileSize, PNG) {
         for (let dy = -1; dy <= 1 && !isEdge; dy++) for (let dx = -1; dx <= 1 && !isEdge; dx++) {
             if (dy === 0 && dx === 0) continue;
             const nidx = (y + dy) * RENDER + (x + dx);
-            if (zbuf[nidx] === Infinity || Math.abs(zbuf[nidx] - d) > DEPTH_THR || (tbuf[idx] !== tbuf[nidx])) {
+            if (zbuf[nidx] === Infinity || Math.abs(zbuf[nidx] - d) > DEPTH_THR) {
                 isEdge = true;
             } else {
                 const nn = nidx * 3;
                 const dot = nbuf[ni] * nbuf[nn] + nbuf[ni + 1] * nbuf[nn + 1] + nbuf[ni + 2] * nbuf[nn + 2];
-                if (dot < NORMAL_THR) isEdge = true;
+                // 1. Show creases above threshold (dot < NORMAL_THR)
+                // 2. Show triangle boundaries only if angle is significant (dot < 0.995)
+                if (dot < NORMAL_THR || (tbuf[idx] !== tbuf[nidx] && dot < 0.995)) {
+                    isEdge = true;
+                }
             }
         }
         if (isEdge) { const pi = idx * 4; buf[pi] = buf[pi + 1] = buf[pi + 2] = 0; }
