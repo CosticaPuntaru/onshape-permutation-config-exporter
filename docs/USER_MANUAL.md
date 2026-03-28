@@ -63,6 +63,21 @@ This is the most powerful part of the tool. It looks at your Onshape Configurati
 
 ---
 
+## 📐 Preparing your Onshape Model
+
+For the tool to see your variables, you must define them in the **Configurations** panel within Onshape.
+
+1. In your Onshape Document, click the **Configuration Panel** icon on the far right.
+2. Click **Configure Part Studio** and add "Configuration parameters".
+3. The tool supports these types:
+   * **List (Enum):** Perfect for material names or pre-set sizes.
+   * **Checkbox (Boolean):** Useful for turning features on/off (e.g., `HasBottom`).
+   * **Variable (Quantity):** Best for dimensions (e.g., `Width`, `Height`).
+
+For a detailed guide on how to set these up in Onshape, see the official **[Onshape Configurations Documentation](https://cad.onshape.com/help/Content/configurations.htm)**.
+
+---
+
 ## 📦 Running the Export
 
 Select your model and choose **📦 Export**. The tool will:
@@ -104,7 +119,7 @@ dist/
 
 * **"Permission Denied" (Mac/Linux):** You might need to make the file executable. Open your terminal in the folder and type: `chmod +x onshape-exporter`
 * **API Key Error:** Double-check that you copied the keys correctly and that they have "Read" permissions.
-* **STEP/3MF Files not generating:** These require Python. If you're a non-programmer, it's best to stick to STL and IGES which Onshape generates directly, or ask a technical friend to help you install Python and the requirements.
+* **STEP/3MF Files are slow:** By default, the tool uses Onshape's Cloud API to translate these files if you don't have Python installed. If you want "Turbo Mode" (faster local conversion), you can install Python and the required libraries, but it's not required for the tool to work!
 
 ---
 
