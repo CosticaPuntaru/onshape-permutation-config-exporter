@@ -1,0 +1,4 @@
+[alias]
+# Replace 'which' with a stub so Bun never inlines process.env.PATH into the
+# compiled binary (Windows backslash paths cause a \u parse error at runtime).
+"which" = "./src/stubs/which.js"

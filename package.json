@@ -1,0 +1,39 @@
+{
+  "name": "onshape-model-exporter",
+  "version": "1.1.0",
+  "description": "Multi-model exporter for Onshape with property-based variations and parallel processing.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "onshape-export": "./src/index.js"
+  },
+  "scripts": {
+    "start": "bun src/index.js",
+    "dev": "bun --watch src/index.js",
+    "preview": "bun src/index.js --preview",
+    "convert": "bun src/index.js --convert",
+    "build:win": "bun scripts/build.js bun-windows-x64 build/onshape-exporter.exe",
+    "build:linux": "bun scripts/build.js bun-linux-x64 build/onshape-exporter",
+    "build:mac": "bun scripts/build.js bun-darwin-arm64 build/onshape-exporter-mac",
+    "release": "bun scripts/release.js",
+    "setup": "bun install"
+  },
+  "keywords": [
+    "onshape",
+    "cad",
+    "exporter",
+    "step",
+    "stl",
+    "3mf",
+    "automation",
+    "bun"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "@polar3d/model-converter": "^1.1.1",
+    "pngjs": "^7.0.0",
+    "prompts": "^2.4.2",
+    "zod": "^4.3.6"
+  }
+}

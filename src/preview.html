@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Model Preview</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; color: white; font-family: sans-serif; }
+        #container { width: 100vw; height: 100vh; }
+        #stats { position: absolute; top: 10px; left: 10px; z-index: 100; pointer-events: none; text-shadow: 1px 1px 1px black; }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="stats">Initializing renderer...</div>
+    <div id="container"></div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        async function init() {
+            const stats = document.getElementById('stats');
+            try {
+                console.log('Renderer initializing...');
+                const container = document.getElementById('container');
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x111111);
+
+                const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 100000);
+                
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.toneMapping = THREE.ReinhardToneMapping;
+                renderer.toneMappingExposure = 1.2;
+                container.appendChild(renderer.domElement);
+
+                // Setup Environment Map for reflections
+                const pmremGenerator = new THREE.PMREMGenerator(renderer);
+                pmremGenerator.compileCubemapShader();
+
+                // Simple procedural "studio" environment
+                const sceneEnv = new THREE.Scene();
+                const geometryEnv = new THREE.SphereGeometry(100, 32, 32);
+                const materialEnv = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide });
+                const meshEnv = new THREE.Mesh(geometryEnv, materialEnv);
+                sceneEnv.add(meshEnv);
+                
+                // Add some high-contrast light sources for reflections
+                const lightMesh1 = new THREE.Mesh(new THREE.SphereGeometry(10, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+                lightMesh1.position.set(50, 50, 50);
+                sceneEnv.add(lightMesh1);
+
+                const lightMesh2 = new THREE.Mesh(new THREE.SphereGeometry(15, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+                lightMesh2.position.set(-50, 20, -50);
+                sceneEnv.add(lightMesh2);
+
+                const envMap = pmremGenerator.fromScene(sceneEnv).texture;
+                scene.environment = envMap;
+
+                // Brighter directional lighting
+                const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+                scene.add(ambientLight);
+
+                const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.5);
+                dirLight1.position.set(100, 200, 100);
+                scene.add(dirLight1);
+
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+                dirLight2.position.set(-100, 100, -100);
+                scene.add(dirLight2);
+                
+                const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight3.position.set(0, -100, 0);
+                scene.add(dirLight3);
+                
+                // Backlight for edge definition
+                const backLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                backLight.position.set(0, 100, -200);
+                scene.add(backLight);
+
+                const loader = new STLLoader();
+                const params = new URLSearchParams(window.location.search);
+                const stlFiles = JSON.parse(decodeURIComponent(params.get('files')));
+                const basePath = params.get('basePath');
+                const rotationConfig = JSON.parse(decodeURIComponent(params.get('rotation') || '{}'));
+                const translationConfig = JSON.parse(decodeURIComponent(params.get('translation') || '{}'));
+                const styleConfig = JSON.parse(decodeURIComponent(params.get('style') || '{}'));
+
+                console.log('Loading models...', stlFiles.length);
+                stats.innerText = `Loading ${stlFiles.length} models...`;
+                
+                const group = new THREE.Group();
+                scene.add(group);
+
+                const itemsPerRow = Math.ceil(Math.sqrt(stlFiles.length));
+                // We'll adjust spacing dynamically after loading
+                let maxModelSize = 0;
+
+                let loadedCount = 0;
+                for (let i = 0; i < stlFiles.length; i++) {
+                    const file = stlFiles[i];
+                    try {
+                        const geometry = await loader.loadAsync(`${basePath}/${file}`);
+                        
+                        geometry.computeVertexNormals();
+                        
+                        // 1. Center geometry at its own local origin (pivot)
+                        geometry.center();
+                        
+                        const material = new THREE.MeshPhysicalMaterial({ 
+                            color: styleConfig.color ? parseInt(styleConfig.color.replace('#', '0x')) : 0x00ccff, 
+                            roughness: styleConfig.roughness !== undefined ? styleConfig.roughness : 0.05,
+                            metalness: styleConfig.metalness !== undefined ? styleConfig.metalness : 0.6,
+                            emissive: styleConfig.emissive ? parseInt(styleConfig.emissive.replace('#', '0x')) : 0x000000,
+                            emissiveIntensity: styleConfig.emissiveIntensity !== undefined ? styleConfig.emissiveIntensity : 0,
+                            clearcoat: 1.0,
+                            clearcoatRoughness: 0.1,
+                            reflectivity: 1.0,
+                            side: THREE.DoubleSide
+                        });
+                        const mesh = new THREE.Mesh(geometry, material);
+                        
+                        // 2. Apply custom rotations (now rotating around center)
+                        if (rotationConfig.x) mesh.rotation.x = rotationConfig.x * (Math.PI / 180);
+                        if (rotationConfig.y) mesh.rotation.y = rotationConfig.y * (Math.PI / 180);
+                        if (rotationConfig.z) mesh.rotation.z = rotationConfig.z * (Math.PI / 180);
+                        
+                        // 3. Compute bounding box after rotation to ground the part
+                        const rotatedBox = new THREE.Box3().setFromObject(mesh);
+                        const height = rotatedBox.max.y - rotatedBox.min.y;
+                        
+                        // Shift up so bottom is at Y=0
+                        mesh.position.y = -rotatedBox.min.y;
+                        
+                        // Apply custom translations relative to grounded center
+                        if (translationConfig.x) mesh.position.x += translationConfig.x;
+                        if (translationConfig.y) mesh.position.y += translationConfig.y;
+                        if (translationConfig.z) mesh.position.z += translationConfig.z;
+
+                        // Add edge highlights
+                        const edgesGeometry = new THREE.EdgesGeometry(geometry, 20);
+                        const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x002244, linewidth: 1, transparent: true, opacity: 0.4 });
+                        const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+                        
+                        edges.rotation.copy(mesh.rotation);
+                        edges.position.copy(mesh.position);
+
+                        const modelGroup = new THREE.Group();
+                        modelGroup.add(mesh);
+                        modelGroup.add(edges);
+
+                        group.add(modelGroup);
+                        loadedCount++;
+                        stats.innerText = `Loaded ${loadedCount}/${stlFiles.length}: ${file}`;
+
+                        // Track max dimension for dynamic layout
+                        const s = new THREE.Vector3();
+                        rotatedBox.getSize(s);
+                        maxModelSize = Math.max(maxModelSize, s.x, s.y, s.z);
+                    } catch (e) {
+                        console.error(`Error loading ${file}:`, e);
+                    }
+                }
+
+                if (loadedCount === 0) {
+                    stats.innerText = "Fatal: No models loaded.";
+                    window.isRendered = true;
+                    return;
+                }
+
+                // Apply dynamic spacing - ultra tight to fill screen
+                const spacing = maxModelSize * 1.1;
+                group.children.forEach((child, i) => {
+                    const row = Math.floor(i / itemsPerRow);
+                    const col = i % itemsPerRow;
+                    child.position.set(col * spacing, 0, row * spacing);
+                });
+
+                // Center the entire group
+                const box = new THREE.Box3().setFromObject(group);
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+                group.position.sub(center);
+
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                const maxDim = Math.max(size.x, size.z); // We care about the horizontal/depth extents
+                
+                console.log(`Models loaded. Group size: ${size.x.toFixed(2)}, ${size.y.toFixed(2)}, ${size.z.toFixed(2)}`);
+                console.log(`Max model size: ${maxModelSize.toFixed(2)}, Spacing: ${spacing.toFixed(2)}`);
+
+                // Minimal grid helper
+                const gridHelper = new THREE.GridHelper(maxDim, 8, 0x333333, 0x222222);
+                gridHelper.position.y = box.min.y - 0.1; 
+                scene.add(gridHelper);
+
+                // Position camera to fit the bounding box tightly
+                const fov = camera.fov * (Math.PI / 180);
+                const aspect = window.innerWidth / window.innerHeight;
+                
+                // For flat plates, maxDim / 2 is a much tighter radius than size.length() / 2
+                const tightRadius = maxDim / 2;
+                
+                // Calculate required distance
+                let D = tightRadius / Math.sin(fov / 2);
+                
+                // Aspect ratio compensation
+                const horizontalFov = 2 * Math.atan(Math.tan(fov / 2) * aspect);
+                const DH = tightRadius / Math.sin(horizontalFov / 2);
+                
+                D = Math.max(D, DH) * 1.0; // 1.0 multiplier is now safe because we used a tighter radius
+                
+                // Position camera at an angle
+                const dist = D / Math.sqrt(3);
+                camera.position.set(dist, dist, dist);
+                camera.lookAt(0, 0, 0);
+                camera.updateProjectionMatrix();
+
+
+
+                console.log(`Camera position: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}`);
+
+                stats.innerText = `Rendering preview...`;
+                
+                // Final render
+                renderer.render(scene, camera);
+
+                const controls = new OrbitControls(camera, renderer.domElement);
+                function animate() {
+                    requestAnimationFrame(animate);
+                    controls.update();
+                    renderer.render(scene, camera);
+                }
+                animate();
+
+                setTimeout(() => {
+                    stats.style.display = 'none';
+                    console.log('Render complete signal set.');
+                    window.isRendered = true;
+                }, 1000);
+
+            } catch (err) {
+                console.error('Fatal initialization error:', err);
+                stats.innerText = `Error: ${err.message}`;
+                window.isRendered = true;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

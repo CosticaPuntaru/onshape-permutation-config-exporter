@@ -1,0 +1,319 @@
+{
+  "settings": {
+    "maxConcurrent": 3,
+    "previewSamples": 25,
+    "previewTileSize": 800
+  },
+  "credentials": {},
+  "models": [
+    {
+      "name": "multiboard-claw",
+      "url": "https://cad.onshape.com/documents/61b761a4e93b233b301330d9/w/97899529c1d55441005927d5/e/41254680db56928c5f91ae00",
+      "formats": [
+        "STL",
+        "STEP",
+        "3MF"
+      ],
+      "propSets": [],
+      "permutations": [
+        {
+          "name": "sizes",
+          "props": {
+            "Thickness": [
+              "10 mm"
+            ],
+            "ClawDepth": [
+              "10 mm"
+            ],
+            "Width": [
+              "20 mm"
+            ]
+          }
+        }
+      ],
+      "rotation": {
+        "x": -90
+      },
+      "style": {
+        "metalness": 0.8,
+        "roughness": 0.15
+      }
+    },
+    {
+      "name": "cup-holder",
+      "url": "https://cad.onshape.com/documents/cf6ebb8f1af6fab7433b0be8/w/224ae78e42e1008a02486291/e/4dc1711dd3ebd1924cdd6c9e",
+      "formats": [
+        "STL",
+        "STEP",
+        "3MF"
+      ],
+      "propSets": [],
+      "permutations": [
+        {
+          "name": "no-bottom-20mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "20 mm"
+            ],
+            "SmallRadius": [
+              "20 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ]
+          }
+        },
+        {
+          "name": "with-bottom-20mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "20 mm"
+            ],
+            "SmallRadius": [
+              "20 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ],
+            "HasBottom": [
+              true
+            ],
+            "BottomHole": [
+              "0 mm"
+            ]
+          }
+        },
+        {
+          "name": "no-bottom-30mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "30 mm"
+            ],
+            "SmallRadius": [
+              "20 mm",
+              "30 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ]
+          }
+        },
+        {
+          "name": "with-bottom-30mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "30 mm"
+            ],
+            "SmallRadius": [
+              "30 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ],
+            "HasBottom": [
+              true
+            ],
+            "BottomHole": [
+              "0 mm"
+            ]
+          }
+        },
+        {
+          "name": "no-bottom-40mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "40 mm"
+            ],
+            "SmallRadius": [
+              "20 mm",
+              "30 mm",
+              "40 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ]
+          }
+        },
+        {
+          "name": "with-bottom-40mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "40 mm"
+            ],
+            "SmallRadius": [
+              "40 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ],
+            "HasBottom": [
+              true
+            ],
+            "BottomHole": [
+              "0 mm"
+            ]
+          }
+        },
+        {
+          "name": "no-bottom-50mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "50 mm"
+            ],
+            "SmallRadius": [
+              "20 mm",
+              "30 mm",
+              "40 mm",
+              "50 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ]
+          }
+        },
+        {
+          "name": "with-bottom-50mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "50 mm"
+            ],
+            "SmallRadius": [
+              "50 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ],
+            "HasBottom": [
+              true
+            ],
+            "BottomHole": [
+              "0 mm"
+            ]
+          }
+        },
+        {
+          "name": "no-bottom-60mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "60 mm"
+            ],
+            "SmallRadius": [
+              "20 mm",
+              "30 mm",
+              "40 mm",
+              "50 mm",
+              "60 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ]
+          }
+        },
+        {
+          "name": "with-bottom-60mm",
+          "props": {
+            "Connector": [
+              "Large",
+              "Mid",
+              "Small"
+            ],
+            "BigRadius": [
+              "60 mm"
+            ],
+            "SmallRadius": [
+              "60 mm"
+            ],
+            "Height": [
+              "15 mm",
+              "30 mm",
+              "50 mm"
+            ],
+            "HasBottom": [
+              true
+            ],
+            "BottomHole": [
+              "0 mm"
+            ]
+          }
+        }
+      ],
+      "style": {
+        "metalness": 0.8,
+        "roughness": 0.15
+      }
+    },
+    {
+      "name": "cup2",
+      "url": "https://cad.onshape.com/documents/cf6ebb8f1af6fab7433b0be8/w/224ae78e42e1008a02486291/e/4dc1711dd3ebd1924cdd6c9e",
+      "formats": [
+        "STL"
+      ],
+      "propSets": [
+        {}
+      ]
+    }
+  ]
+}
