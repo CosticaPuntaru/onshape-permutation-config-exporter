@@ -77,18 +77,23 @@ function bumpVersion(current, bump) {
 }
 
 async function zipDir(sourceDir, outFile) {
+    const relativeOut = path.relative(ROOT, outFile);
     if (process.platform === 'win32') {
+        const absoluteOut = path.resolve(ROOT, relativeOut);
         await run('powershell', [
             '-Command',
-            `Compress-Archive -Path "${sourceDir}\\*" -DestinationPath "${outFile}" -Force`,
+            `Compress-Archive -Path "${sourceDir}\\*" -DestinationPath "${absoluteOut}" -Force`,
         ]);
     } else {
-        await run('zip', ['-r', outFile, '.'], { cwd: sourceDir });
+        await run('zip', ['-r', relativeOut, '.'], { cwd: sourceDir });
     }
 }
 
 async function tarDir(sourceDir, outFile) {
-    await run('tar', ['-czf', outFile, '-C', sourceDir, '.']);
+    const relativeOut = path.relative(ROOT, outFile);
+    // On Windows, tar interprets 'C:\path' as 'host:path'. 
+    // Using relative paths or --force-local fixes this.
+    await run('tar', ['-czf', relativeOut, '-C', sourceDir, '.']);
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -115,28 +120,40 @@ async function main() {
         throw new Error(`Working tree has uncommitted changes. Commit or stash before releasing.\n${dirty}`);
     }
 
-    // Check the tag doesn't already exist
-    const existingTags = await capture('git', ['tag', '--list', TAG]);
-    if (existingTags) {
-        throw new Error(`Tag ${TAG} already exists. Update the version or delete the tag first.`);
+    // Check the tag
+    const tagHash = await capture('git', ['rev-parse', '--verify', TAG]).catch(() => "");
+    const headHash = await capture('git', ['rev-parse', '--verify', 'HEAD']);
+    let alreadyTagged = false;
+
+    if (tagHash) {
+        if (tagHash === headHash) {
+            console.log(`ℹ️  Tag ${TAG} already exists on this commit. Resuming release...`);
+            alreadyTagged = true;
+        } else {
+            throw new Error(`Tag ${TAG} exists on a different commit (${tagHash.substring(0, 7)}). Delete it or bump the version.`);
+        }
     }
 
     console.log(`\n🚀 Releasing ${pkg.name} ${pkg.version} → ${newVersion} (${TAG})\n`);
 
-    // Bump version in package.json
-    pkg.version = newVersion;
-    fs.writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + '\n');
-    console.log(`✅ Bumped package.json to ${newVersion}`);
+    if (!alreadyTagged) {
+        // Bump version in package.json
+        pkg.version = newVersion;
+        fs.writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + '\n');
+        console.log(`✅ Bumped package.json to ${newVersion}`);
 
-    // Commit version bump
-    await run('git', ['add', 'package.json']);
-    await run('git', ['commit', '-m', `chore: release ${TAG}`]);
+        // Commit version bump
+        await run('git', ['add', 'package.json']);
+        await run('git', ['commit', '-m', `chore: release ${TAG}`]);
 
-    // Create and push tag
-    await run('git', ['tag', TAG]);
-    await run('git', ['push']);
-    await run('git', ['push', 'origin', TAG]);
-    console.log(`✅ Tagged and pushed ${TAG}`);
+        // Create and push tag
+        await run('git', ['tag', TAG]);
+        await run('git', ['push']);
+        await run('git', ['push', 'origin', TAG]);
+        console.log(`✅ Tagged and pushed ${TAG}`);
+    } else {
+        console.log(`⏩ Skipping version bump and git steps (already completed).`);
+    }
 
     // Clean build dirs
     fs.rmSync(BUILD_DIR, { recursive: true, force: true });
