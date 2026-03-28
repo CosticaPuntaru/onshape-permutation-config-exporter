@@ -368,51 +368,82 @@ async function spawnPreview(folderPath, rotation = "{}", translation = "{}", sty
 
 function buildExportSummary(selected) {
     const rows = [];
-    let grandTotal = 0;
+    let grandVariants = 0;
+    let grandTotalFiles = 0;
     let grandExisting = 0;
-    let grandApiCalls = 0;
+    let grandDownloads = 0;
+    let grandConversions = 0;
 
     for (const model of selected) {
         const permutationSets = model.permutations ? expandPermutations(model.permutations) : [];
         const effectivePropSets = [...(model.propSets || []), ...permutationSets];
         if (effectivePropSets.length === 0) continue;
 
-        let modelTotal = 0;
+        let modelVariants = effectivePropSets.length;
+        let modelFiles = 0;
         let modelExisting = 0;
-        let modelApiCalls = 0;
+        let modelDownloads = 0;
+        let modelConversions = 0;
 
         for (const props of effectivePropSets) {
-            let needsStl = false;
+            let variantNeedsDownload = false;
+            let variantConversionsNeeded = 0;
+            
             for (const format of model.formats) {
-                modelTotal++;
+                modelFiles++;
                 const exists = fs.existsSync(getFilePath(model, format, props));
-                if (exists) modelExisting++;
-                else {
-                    if ((format === '3MF' || format === 'STEP') && hasPython) needsStl = true;
-                    else modelApiCalls++;
+                if (exists) {
+                    modelExisting++;
+                } else {
+                    if ((format === '3MF' || format === 'STEP') && hasPython) {
+                        variantConversionsNeeded++;
+                    } else {
+                        // If it's STL, or if we are in Standalone mode, it's a download (Cloud API call)
+                        variantNeedsDownload = true; 
+                    }
                 }
             }
-            if (needsStl && !fs.existsSync(getFilePath(model, 'STL', props))) {
-                // If we need a local conversion and STL doesn't exist, we'll need an API call for it
-                // Note: If STL was already counted as an API call above, don't double count
-                const stlInFormats = model.formats.includes('STL');
-                if (!stlInFormats) modelApiCalls++;
+
+            // If any format in the variant needs Cloud translation
+            if (variantNeedsDownload) modelDownloads++;
+            // Local conversions are additive
+            modelConversions += variantConversionsNeeded;
+        }
+
+        let groupBreakdowns = [];
+        if (model.permutations && model.permutations.length > 0) {
+            for (const group of model.permutations) {
+                const props = group.props;
+                const groupCount = Object.values(props).reduce((acc, v) => acc * v.length, 1);
+                const formula = Object.entries(props)
+                    .map(([k, v]) => `${v.length} × ${k}`)
+                    .join(' * ');
+                groupBreakdowns.push({ 
+                    name: group.name, 
+                    count: groupCount, 
+                    formula: formula 
+                });
             }
         }
 
         rows.push({ 
             name: model.name, 
-            total: modelTotal, 
-            existing: modelExisting, 
-            combinations: effectivePropSets.length,
-            apiCalls: modelApiCalls 
+            variants: modelVariants,
+            totalFiles: modelFiles,
+            existing: modelExisting,
+            downloads: modelDownloads,
+            conversions: modelConversions,
+            groupBreakdowns: groupBreakdowns
         });
-        grandTotal += modelTotal;
+        
+        grandVariants += modelVariants;
+        grandTotalFiles += modelFiles;
         grandExisting += modelExisting;
-        grandApiCalls += modelApiCalls;
+        grandDownloads += modelDownloads;
+        grandConversions += modelConversions;
     }
 
-    return { rows, grandTotal, grandExisting, grandApiCalls };
+    return { rows, grandVariants, grandTotalFiles, grandExisting, grandDownloads, grandConversions };
 }
 
 async function handleExport(config, selected) {
@@ -744,29 +775,48 @@ async function handleEditModel(currentConfig, model) {
 async function handleModelAction(config, selectedModel, action) {
     if (action === 'export') {
         const summary = buildExportSummary([selectedModel]);
-        if (summary.grandTotal === 0) {
+        if (summary.grandTotalFiles === 0) {
             console.log(`\n⚠️ No export combinations configured. Use ⚙️  Permutations first.\n`);
             return;
         }
-        console.log(`\n📊 Export Preview for: ${selectedModel.name}`);
+
+        console.log(`\n\x1b[1;36m📊 Export Summary: ${selectedModel.name}\x1b[0m`);
         console.log(`${'─'.repeat(60)}`);
-        for (const row of summary.rows) {
-            console.log(`   ${row.name}`);
-            console.log(`     Variants (Combinations) : ${row.combinations}`);
-            console.log(`     Onshape API Calls       : ${row.apiCalls} (Required downloads)`);
-            console.log(`     Already exist           : ${row.existing} (will skip)`);
-            console.log(`     Final Total Files       : ${row.total}`);
+        
+        const row = summary.rows[0];
+        console.log(`   📁 Total variants  : ${row.variants}`);
+        if (row.groupBreakdowns && row.groupBreakdowns.length > 0) {
+            for (const gb of row.groupBreakdowns) {
+                const label = gb.name && gb.name !== 'onshape' ? `﹂ ${gb.name}` : `﹂ (Config)`;
+                console.log(`     \x1b[90m${label.padEnd(16)} : ${gb.count} (${gb.formula})\x1b[0m`);
+            }
         }
+        console.log(`   📦 Total files     : ${row.totalFiles} (Current formats: ${selectedModel.formats.join(', ')})`);
+        console.log(`   ✅ Already exist   : ${row.existing} (Skipping these)`);
         console.log(`${'─'.repeat(60)}`);
-        const toExportTotal = summary.grandTotal - summary.grandExisting;
-        const localConversions = toExportTotal - summary.grandApiCalls;
-        console.log(`   🚀 Plan: ${summary.grandApiCalls} downloads + ${localConversions} local conversions → ${toExportTotal} new files`);
-        console.log(`\x1b[90m   (Note: Local conversion is preferred for STEP/3MF. If it fails, we fall back to Cloud translation.)\x1b[0m\n`);
+
+        const newFiles = summary.grandTotalFiles - summary.grandExisting;
+        if (newFiles === 0) {
+            console.log(`   ✨ Everything is already up to date!`);
+            console.log(`${'─'.repeat(60)}\n`);
+            return;
+        }
+
+        console.log(`\x1b[1m🚀 Action Plan:\x1b[0m`);
+        if (hasPython) {
+            console.log(`   ☁️  Onshape Downloads : ${summary.grandDownloads} (New/Updated parts)`);
+            console.log(`   ⚙️  Local Conversions : ${summary.grandConversions} (STEP/3MF generation)`);
+        } else {
+            console.log(`   ☁️  Onshape Downloads : ${newFiles} (Direct Cloud translations)`);
+            console.log(`      \x1b[90m(Note: Using Cloud Fallback because Python is not detected)\x1b[0m`);
+        }
+        console.log(`   ✨ New files total   : ${newFiles}`);
+        console.log(`${'─'.repeat(60)}\n`);
 
         const { confirm } = await prompts({
             type: 'confirm',
             name: 'confirm',
-            message: `Start download and local conversion?`,
+            message: `Start the export process?`,
             initial: true
         });
         if (!confirm) { console.log('⬅️  Export cancelled.\n'); return; }
