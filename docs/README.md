@@ -6,6 +6,7 @@ A batch-export CLI for Onshape that generates multiple CAD variants from paramet
 
 ## Table of Contents
 
+- [📘 User Manual (Non-Programmers)](./USER_MANUAL.md)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Credentials Setup](#credentials-setup)
