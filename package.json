@@ -15,6 +15,7 @@
     "build:win": "bun scripts/build.js bun-windows-x64 build/onshape-exporter.exe",
     "build:linux": "bun scripts/build.js bun-linux-x64 build/onshape-exporter",
     "build:mac": "bun scripts/build.js bun-darwin-arm64 build/onshape-exporter-mac",
+    "build": "bun run build:win && bun run build:linux && bun run build:mac",
     "release": "bun scripts/release.js",
     "setup": "bun install"
   },
