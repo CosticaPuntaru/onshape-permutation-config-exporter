@@ -14,6 +14,7 @@ import prompts from 'prompts';
  */
 
 const verbose = process.env.LOG_LEVEL === 'silly';
+let currentStatusText = "";
 
 async function loadConfig() {
     const jsonPath = path.join(process.cwd(), 'config.json');
@@ -143,7 +144,8 @@ async function exportVariation(config, model, format, props) {
         if (!stlPath) throw new Error(`Required STL for ${format} conversion could not be exported.`);
         
         try {
-            console.log(`🔄 [${format}] Local Conversion: ${path.basename(filePath)}`);
+            if (verbose) console.log(`🔄 [${format}] Local Conversion: ${path.basename(filePath)}`);
+            currentStatusText = `${format} (Local): ${path.basename(filePath)}`;
             if (format === '3MF') await convertTo3MF(stlPath, filePath);
             if (format === 'STEP') await convertToSTEP(stlPath, filePath);
             return filePath;
@@ -159,6 +161,8 @@ async function exportVariation(config, model, format, props) {
     const entries = Object.entries(props);
     const configStr = entries.map(([k, v]) => `${k}=${String(v).replace(/ /g, '+')}`).join(';');
     const propsFileNamePart = entries.map(([k, v]) => `${k}_${String(v).replace(/ /g, '-')}`).join('_').replace(/[&=;]/g, '_');
+    const fileName = `${model.name}_${propsFileNamePart}`;
+    currentStatusText = `${format}: ${fileName}`;
 
     const apiUrl = `https://cad.onshape.com/api/partstudios/d/${did}/w/${wid}/e/${eid}/translations`;
     
@@ -198,7 +202,7 @@ async function exportVariation(config, model, format, props) {
         // 3. Download Result
         if (externalDataId) {
             const dlUrl = `https://cad.onshape.com/api/documents/d/${did}/externaldata/${externalDataId}`;
-            console.log(`⬇️ [${format}] Downloading: ${path.basename(filePath)}`);
+            if (verbose) console.log(`⬇️ [${format}] Downloading: ${path.basename(filePath)}`);
             
             const dlRes = await fetch(dlUrl, {
                 headers: { ...getHeaders(config, 'GET', dlUrl), 'Accept': 'application/octet-stream' }
@@ -207,7 +211,7 @@ async function exportVariation(config, model, format, props) {
             if (!dlRes.ok) throw new Error(`Download failed (${dlRes.status})`);
             
             await Bun.write(filePath, dlRes);
-            console.log(`✅ [${format}] Saved: ${path.basename(filePath)}`);
+            if (verbose) console.log(`✅ [${format}] Saved: ${path.basename(filePath)}`);
             return filePath;
         }
     } catch (err) {
@@ -247,14 +251,32 @@ function getFilePath(model, format, props) {
 }
 
 /**
- * Simple Concurrency Queue
+ * Simple Concurrency Queue with Spinner and Status
  */
-async function runWithLimit(tasks, limit) {
+async function runWithLimit(tasks, limit, progressLabel = "Processing") {
     const results = [];
     const executing = new Set();
+    let completed = 0;
+    const total = tasks.length;
+    const spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let spinnerIdx = 0;
+
+    const render = () => {
+        const s = spinner[spinnerIdx];
+        const status = currentStatusText ? ` \x1b[90m― ${currentStatusText.substring(0, 60)}${currentStatusText.length > 60 ? '...' : ''}\x1b[0m` : "";
+        process.stdout.write(`\r   \x1b[35m${s}\x1b[0m \x1b[36m${progressLabel}: [${completed}/${total}]\x1b[0m${status}\x1b[K`);
+    };
+
+    const interval = setInterval(() => {
+        spinnerIdx = (spinnerIdx + 1) % spinner.length;
+        render();
+    }, 80);
+
     for (const task of tasks) {
         const p = task().then(res => {
             executing.delete(p);
+            completed++;
+            render();
             return res;
         });
         results.push(p);
@@ -263,7 +285,12 @@ async function runWithLimit(tasks, limit) {
             await Promise.race(executing);
         }
     }
-    return Promise.all(results);
+    
+    await Promise.all(results);
+    clearInterval(interval);
+    process.stdout.write(`\r   \x1b[32m✔\x1b[0m \x1b[36m${progressLabel}: [${total}/${total}] Complete!\x1b[0m${' '.repeat(80)}\n`);
+    currentStatusText = "";
+    return results;
 }
 
 async function bulkConvert(folderPath, targetFormats = ['STEP', '3MF']) {
@@ -324,7 +351,7 @@ async function bulkConvert(folderPath, targetFormats = ['STEP', '3MF']) {
         limit = config.settings.maxConcurrent;
     } catch(e) {}
 
-    await runWithLimit(tasks, limit);
+    await runWithLimit(tasks, limit, "Converting");
     console.log(`\n✨ Bulk conversion complete!`);
 }
 
@@ -416,7 +443,7 @@ async function handleExport(config, selected) {
 
     console.log(`\n🚀 Starting ${tasks.length} exports (Parallel: ${config.settings.maxConcurrent})...\n`);
     const start = Date.now();
-    await runWithLimit(tasks, config.settings.maxConcurrent);
+    await runWithLimit(tasks, config.settings.maxConcurrent, "Exporting");
     console.log(`\n✨ Export complete! Total time: ${((Date.now() - start) / 1000).toFixed(1)}s`);
 
     console.log(`\n🎨 Generating previews for exported models...\n`);
@@ -729,7 +756,8 @@ async function handleModelAction(config, selectedModel, action) {
         }
         console.log(`${'─'.repeat(60)}`);
         const toExportTotal = summary.grandTotal - summary.grandExisting;
-        console.log(`   Action: ${summary.grandApiCalls} API calls → ${toExportTotal} new files`);
+        const localConversions = toExportTotal - summary.grandApiCalls;
+        console.log(`   🚀 Plan: ${summary.grandApiCalls} downloads + ${localConversions} local conversions → ${toExportTotal} new files`);
         console.log(`\x1b[90m   (Note: Local conversion for STEP/3MF saves you thousands of API calls)\x1b[0m\n`);
 
         const { confirm } = await prompts({

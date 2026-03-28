@@ -21,7 +21,8 @@ function runConverter(format, stlPath, outputPath) {
                 `Place local_converter.py next to the exe and run: pip install -r requirements.txt`
             ));
         }
-        console.log(`🔄 [LOCAL] Converting to ${format.toUpperCase()} (Bypassing Onshape API): ${path.basename(stlPath)} -> ${path.basename(outputPath)}`);
+        const verbose = process.env.LOG_LEVEL === 'silly';
+        if (verbose) console.log(`🔄 [LOCAL] Converting to ${format.toUpperCase()}: ${path.basename(stlPath)} -> ${path.basename(outputPath)}`);
         
         const proc = spawn('python', [pythonScript, format, stlPath, outputPath]);
 
@@ -48,7 +49,7 @@ function runConverter(format, stlPath, outputPath) {
                         }
                     }
                     
-                    console.log(`✅ ${format.toUpperCase()} Conversion successful: ${path.basename(outputPath)}`);
+                    if (verbose) console.log(`✅ ${format.toUpperCase()} Conversion successful: ${path.basename(outputPath)}`);
                     resolve();
                 } catch (err) {
                     reject(err);

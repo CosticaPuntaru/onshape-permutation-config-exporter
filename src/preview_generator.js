@@ -275,11 +275,15 @@ export async function generatePreview(folderPath, rotation = '{}', translation =
     console.log(`Rendering ${display.length} STL files...`);
 
     const tiles = [];
+    let completed = 0;
     for (const file of display) {
         const buf = fs.readFileSync(path.join(absPath, file));
         const tris = parseSTL(buf);
         tiles.push(renderTile(tris, rotCfg, transCfg, color, tileSize, PNG));
+        completed++;
+        process.stdout.write(`\r   \x1b[36mRendering: [${completed}/${display.length}]\x1b[0m`);
     }
+    process.stdout.write('\n');
 
     const grid = composeGrid(tiles, tileSize, PNG);
     const outputPath = path.join(absPath, '..', 'preview.png');
