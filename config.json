@@ -50,7 +50,7 @@
       "propSets": [],
       "permutations": [
         {
-          "name": "no-bottom-20mm",
+          "name": "no-bottom",
           "props": {
             "Connector": [
               "Large",
@@ -58,197 +58,27 @@
               "Small"
             ],
             "BigRadius": [
-              "20 mm"
+              "30 mm",
+              "45 mm",
+              "60 mm"
             ],
             "SmallRadius": [
-              "20 mm"
+              "30 mm",
+              "45 mm",
+              "60 mm"
             ],
             "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ]
-          }
-        },
-        {
-          "name": "with-bottom-20mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "20 mm"
-            ],
-            "SmallRadius": [
-              "20 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ],
-            "HasBottom": [
-              true
-            ],
-            "BottomHole": [
-              "0 mm"
-            ]
-          }
-        },
-        {
-          "name": "no-bottom-30mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "30 mm"
-            ],
-            "SmallRadius": [
               "20 mm",
-              "30 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ]
-          }
-        },
-        {
-          "name": "with-bottom-30mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "30 mm"
-            ],
-            "SmallRadius": [
-              "30 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ],
-            "HasBottom": [
-              true
-            ],
-            "BottomHole": [
-              "0 mm"
-            ]
-          }
-        },
-        {
-          "name": "no-bottom-40mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "40 mm"
-            ],
-            "SmallRadius": [
-              "20 mm",
-              "30 mm",
-              "40 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ]
-          }
-        },
-        {
-          "name": "with-bottom-40mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "40 mm"
-            ],
-            "SmallRadius": [
-              "40 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ],
-            "HasBottom": [
-              true
-            ],
-            "BottomHole": [
-              "0 mm"
-            ]
-          }
-        },
-        {
-          "name": "no-bottom-50mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "50 mm"
-            ],
-            "SmallRadius": [
-              "20 mm",
-              "30 mm",
               "40 mm",
-              "50 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ]
-          }
-        },
-        {
-          "name": "with-bottom-50mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "50 mm"
-            ],
-            "SmallRadius": [
-              "50 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
+              "60 mm"
             ],
             "HasBottom": [
-              true
-            ],
-            "BottomHole": [
-              "0 mm"
+              false
             ]
           }
         },
         {
-          "name": "no-bottom-60mm",
+          "name": "with-bottom",
           "props": {
             "Connector": [
               "Large",
@@ -256,40 +86,19 @@
               "Small"
             ],
             "BigRadius": [
+              "30 mm",
+              "45 mm",
               "60 mm"
             ],
             "SmallRadius": [
+              "30 mm",
+              "45 mm",
+              "60 mm"
+            ],
+            "Height": [
               "20 mm",
-              "30 mm",
               "40 mm",
-              "50 mm",
               "60 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
-            ]
-          }
-        },
-        {
-          "name": "with-bottom-60mm",
-          "props": {
-            "Connector": [
-              "Large",
-              "Mid",
-              "Small"
-            ],
-            "BigRadius": [
-              "60 mm"
-            ],
-            "SmallRadius": [
-              "60 mm"
-            ],
-            "Height": [
-              "15 mm",
-              "30 mm",
-              "50 mm"
             ],
             "HasBottom": [
               true
