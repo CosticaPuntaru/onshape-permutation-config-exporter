@@ -340,6 +340,7 @@ function buildExportSummary(selected) {
     const rows = [];
     let grandTotal = 0;
     let grandExisting = 0;
+    let grandApiCalls = 0;
 
     for (const model of selected) {
         const permutationSets = model.permutations ? expandPermutations(model.permutations) : [];
@@ -348,20 +349,40 @@ function buildExportSummary(selected) {
 
         let modelTotal = 0;
         let modelExisting = 0;
+        let modelApiCalls = 0;
 
         for (const props of effectivePropSets) {
+            let needsStl = false;
             for (const format of model.formats) {
                 modelTotal++;
-                if (fs.existsSync(getFilePath(model, format, props))) modelExisting++;
+                const exists = fs.existsSync(getFilePath(model, format, props));
+                if (exists) modelExisting++;
+                else {
+                    if (format === '3MF' || format === 'STEP') needsStl = true;
+                    else modelApiCalls++;
+                }
+            }
+            if (needsStl && !fs.existsSync(getFilePath(model, 'STL', props))) {
+                // If we need a local conversion and STL doesn't exist, we'll need an API call for it
+                // Note: If STL was already counted as an API call above, don't double count
+                const stlInFormats = model.formats.includes('STL');
+                if (!stlInFormats) modelApiCalls++;
             }
         }
 
-        rows.push({ name: model.name, total: modelTotal, existing: modelExisting, combinations: effectivePropSets.length });
+        rows.push({ 
+            name: model.name, 
+            total: modelTotal, 
+            existing: modelExisting, 
+            combinations: effectivePropSets.length,
+            apiCalls: modelApiCalls 
+        });
         grandTotal += modelTotal;
         grandExisting += modelExisting;
+        grandApiCalls += modelApiCalls;
     }
 
-    return { rows, grandTotal, grandExisting };
+    return { rows, grandTotal, grandExisting, grandApiCalls };
 }
 
 async function handleExport(config, selected) {
@@ -698,23 +719,23 @@ async function handleModelAction(config, selectedModel, action) {
             return;
         }
         console.log(`\n📊 Export Preview for: ${selectedModel.name}`);
-        console.log(`${'─'.repeat(52)}`);
+        console.log(`${'─'.repeat(60)}`);
         for (const row of summary.rows) {
-            const toExport = row.total - row.existing;
             console.log(`   ${row.name}`);
-            console.log(`     Combinations : ${row.combinations}`);
-            console.log(`     Total files  : ${row.total}`);
-            console.log(`     Already exist: ${row.existing} (will skip)`);
-            console.log(`     To export    : ${toExport}`);
+            console.log(`     Variants (Combinations) : ${row.combinations}`);
+            console.log(`     Onshape API Calls       : ${row.apiCalls} (Required downloads)`);
+            console.log(`     Already exist           : ${row.existing} (will skip)`);
+            console.log(`     Final Total Files       : ${row.total}`);
         }
-        console.log(`${'─'.repeat(52)}`);
+        console.log(`${'─'.repeat(60)}`);
         const toExportTotal = summary.grandTotal - summary.grandExisting;
-        console.log(`   Total: ${summary.grandTotal} files — ${summary.grandExisting} skipped, ${toExportTotal} new\n`);
+        console.log(`   Action: ${summary.grandApiCalls} API calls → ${toExportTotal} new files`);
+        console.log(`\x1b[90m   (Note: Local conversion for STEP/3MF saves you thousands of API calls)\x1b[0m\n`);
 
         const { confirm } = await prompts({
             type: 'confirm',
             name: 'confirm',
-            message: `Start export of ${toExportTotal} new file${toExportTotal !== 1 ? 's' : ''}?`,
+            message: `Start download and local conversion?`,
             initial: true
         });
         if (!confirm) { console.log('⬅️  Export cancelled.\n'); return; }
