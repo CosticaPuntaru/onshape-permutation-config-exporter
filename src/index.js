@@ -2,6 +2,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import readline from 'node:readline';
 import { ConfigSchema } from './config.schema.js';
 import { convertTo3MF, convertToSTEP } from './converter.js';
@@ -15,6 +16,7 @@ import prompts from 'prompts';
 
 const verbose = process.env.LOG_LEVEL === 'silly';
 let currentStatusText = "";
+let hasPython = false;
 
 async function loadConfig() {
     const jsonPath = path.join(process.cwd(), 'config.json');
@@ -137,21 +139,22 @@ async function exportVariation(config, model, format, props) {
     const targetDir = path.dirname(filePath);
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
-    // Local Format Handling
+    // Local Format Handling (Try local first, then fallback to Cloud)
     if (format === '3MF' || format === 'STEP') {
-        // Ensure STL exists first (for local conversion)
         const stlPath = await exportVariation(config, model, 'STL', props);
-        if (!stlPath) throw new Error(`Required STL for ${format} conversion could not be exported.`);
-        
-        try {
-            if (verbose) console.log(`🔄 [${format}] Local Conversion: ${path.basename(filePath)}`);
-            currentStatusText = `${format} (Local): ${path.basename(filePath)}`;
-            if (format === '3MF') await convertTo3MF(stlPath, filePath);
-            if (format === 'STEP') await convertToSTEP(stlPath, filePath);
-            return filePath;
-        } catch (err) {
-            console.error(`❌ [${format}] Local conversion failed:`, err.message);
-            return null;
+        if (stlPath) {
+            try {
+                if (verbose) console.log(`🔄 [${format}] Attempting Local Conversion: ${path.basename(filePath)}`);
+                currentStatusText = `${format} (Local): ${path.basename(filePath)}`;
+                if (format === '3MF') await convertTo3MF(stlPath, filePath);
+                if (format === 'STEP') await convertToSTEP(stlPath, filePath);
+                return filePath;
+            } catch (err) {
+                // If local failed, we fall through to the Cloud translation below.
+                console.log(`\n   \x1b[33m⚠️  Local conversion failed for ${path.basename(filePath)}. Falling back to Cloud API...\x1b[0m`);
+                if (verbose) console.log(`⚠️ [${format}] Local fallback error: ${err.message}`);
+                currentStatusText = `Falling back to Cloud: ${path.basename(filePath)}`;
+            }
         }
     }
 
@@ -385,7 +388,7 @@ function buildExportSummary(selected) {
                 const exists = fs.existsSync(getFilePath(model, format, props));
                 if (exists) modelExisting++;
                 else {
-                    if (format === '3MF' || format === 'STEP') needsStl = true;
+                    if ((format === '3MF' || format === 'STEP') && hasPython) needsStl = true;
                     else modelApiCalls++;
                 }
             }
@@ -758,7 +761,7 @@ async function handleModelAction(config, selectedModel, action) {
         const toExportTotal = summary.grandTotal - summary.grandExisting;
         const localConversions = toExportTotal - summary.grandApiCalls;
         console.log(`   🚀 Plan: ${summary.grandApiCalls} downloads + ${localConversions} local conversions → ${toExportTotal} new files`);
-        console.log(`\x1b[90m   (Note: Local conversion for STEP/3MF saves you thousands of API calls)\x1b[0m\n`);
+        console.log(`\x1b[90m   (Note: Local conversion is preferred for STEP/3MF. If it fails, we fall back to Cloud translation.)\x1b[0m\n`);
 
         const { confirm } = await prompts({
             type: 'confirm',
@@ -953,6 +956,16 @@ async function main() {
         }
     }
 
+    function checkPython() {
+        try {
+            const res = spawnSync('python', ['--version']);
+            return res.status === 0;
+        } catch {
+            return false;
+        }
+    }
+    hasPython = checkPython();
+
     // First-run credential wizard: prompt if no .env and no env vars are set
     const envPath = path.join(process.cwd(), '.env');
     if (!fs.existsSync(envPath) && !process.env.ONSHAPE_ACCESS_KEY) {
@@ -973,6 +986,17 @@ async function main() {
     }
 
     while (true) {
+        console.clear();
+        console.log("\x1b[95m╔══════════════════════════════════════════════════════╗\x1b[0m");
+        console.log("\x1b[95m║           ONSHAPE MULTI-MODEL EXPORTER (BUN)         ║\x1b[0m");
+        console.log("\x1b[95m╚══════════════════════════════════════════════════════╝\x1b[0m");
+        
+        if (hasPython) {
+            console.log("   \x1b[32m🚀 Turbo Mode Active\x1b[0m (Local Python conversion enabled)\n");
+        } else {
+            console.log("   \x1b[36m☁️  Standalone Mode Active\x1b[0m (Using Cloud Fallback conversion)\n");
+        }
+
         const currentConfig = await loadConfig();
 
         // First use: skip the menu and go straight to adding a model
