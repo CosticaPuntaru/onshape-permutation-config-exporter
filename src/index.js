@@ -893,6 +893,93 @@ async function handleEditModel(currentConfig, model) {
     }
 }
 
+async function handleRename(config, model) {
+    const modelDir = path.join(process.cwd(), 'dist', model.name);
+    if (!fs.existsSync(modelDir)) {
+        console.log(`\n❌ Error: No exports found for ${model.name}. Export some files first.\n`);
+        await prompts({ type: 'text', name: 'wait', message: 'Press Enter to continue...' });
+        return;
+    }
+
+    const renameDirName = `${model.name}-rename`;
+    const renameDir = path.join(process.cwd(), 'dist', renameDirName);
+    if (!fs.existsSync(renameDir)) fs.mkdirSync(renameDir, { recursive: true });
+
+    const formats = fs.readdirSync(modelDir).filter(f => fs.statSync(path.join(modelDir, f)).isDirectory());
+    
+    console.log(`\n🏷️  Simplifying filenames for ${model.name} based ONLY on folder content...`);
+    console.log(`   Destination: \x1b[35mdist/${renameDirName}\x1b[0m\n`);
+
+    let totalRenamed = 0;
+
+    for (const format of formats) {
+        const formatDir = path.join(modelDir, format);
+        const targetFormatDir = path.join(renameDir, format);
+        if (!fs.existsSync(targetFormatDir)) fs.mkdirSync(targetFormatDir, { recursive: true });
+
+        const files = fs.readdirSync(formatDir).filter(f => {
+            const stats = fs.statSync(path.join(formatDir, f));
+            return stats.isFile() && f.startsWith(model.name);
+        });
+
+        if (files.length === 0) continue;
+
+        const fileData = files.map(filename => {
+            const ext = path.extname(filename);
+            let base = filename.slice(0, -ext.length);
+            if (base.startsWith(model.name + "_")) {
+                base = base.slice(model.name.length + 1);
+            } else if (base === model.name) {
+                base = "";
+            }
+            
+            const segments = base ? base.split('_') : [];
+            return { filename, ext, segments };
+        });
+
+        const maxSegments = Math.max(...fileData.map(d => d.segments.length));
+        const changingSegments = new Set();
+        for (let i = 0; i < maxSegments; i++) {
+            const firstVal = fileData[0].segments[i];
+            for (let j = 1; j < fileData.length; j++) {
+                if (fileData[j].segments[i] !== firstVal) {
+                    changingSegments.add(i);
+                    break;
+                }
+            }
+        }
+
+        const keptIndices = new Set();
+        changingSegments.forEach(idx => {
+            keptIndices.add(idx);
+            if (idx % 2 === 1) keptIndices.add(idx - 1);
+            else keptIndices.add(idx + 1);
+        });
+
+        for (const data of fileData) {
+            const keptParts = [];
+            for (let i = 0; i < data.segments.length; i += 2) {
+                if (keptIndices.has(i) || keptIndices.has(i + 1)) {
+                    const key = data.segments[i];
+                    const val = data.segments[i + 1];
+                    if (val !== undefined) keptParts.push(`${key}-${val}`);
+                    else keptParts.push(key);
+                }
+            }
+
+            const newBase = keptParts.length > 0 ? keptParts.join('_') : model.name;
+            const newFilename = `${newBase}${data.ext}`;
+            fs.copyFileSync(path.join(formatDir, data.filename), path.join(targetFormatDir, newFilename));
+            totalRenamed++;
+        }
+    }
+
+    console.log(`✨ Success! Created simplified copies in:`);
+    console.log(`   \x1b[32m${renameDir}\x1b[0m`);
+    console.log(`   Processed ${totalRenamed} files.\n`);
+    await prompts({ type: 'text', name: 'wait', message: 'Press Enter to continue...' });
+}
+
 async function handleModelAction(config, selectedModel, action) {
     if (action === 'export') {
         const summary = buildExportSummary([selectedModel]);
@@ -994,6 +1081,8 @@ async function handleModelAction(config, selectedModel, action) {
             }
     } else if (action === 'edit') {
             await handleEditModel(config, selectedModel);
+    } else if (action === 'rename') {
+            await handleRename(config, selectedModel);
     }
 }
 
@@ -1129,6 +1218,7 @@ async function main() {
                     'v': 'preview',
                     'p': 'permutations',
                     'd': 'edit',
+                    'n': 'rename',
                     'r': 'delete'
                 };
                 const action = actionMap[actionKey.toLowerCase()];
@@ -1230,6 +1320,7 @@ async function main() {
                 { key: 'v', label: '[V]  🖼️   Preview     — Generate 5×5 grid visualization',   value: 'preview'       },
                 { key: 'p', label: '[P]  ⚙️   Permutations — Fetch & configure combinations',    value: 'permutations'  },
                 { key: 'd', label: '[D]  ✏️   Details      — Color, rotation, translation',      value: 'edit'          },
+                { key: 'n', label: '[N]  🏷️   Rename       — Create simplified-names copy',      value: 'rename'        },
                 { key: 'r', label: '[R]  🗑️   Remove       — Delete model from config',          value: 'delete'        },
                 { key: 'b', label: '[B]  ⬅️   Back',                                             value: 'back'          },
             ]);
