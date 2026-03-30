@@ -1,10 +1,10 @@
 {
+  "credentials": {},
   "settings": {
-    "maxConcurrent": 3,
+    "maxConcurrent": 10,
     "previewSamples": 25,
     "previewTileSize": 800
   },
-  "credentials": {},
   "models": [
     {
       "name": "multiboard-claw",
@@ -114,6 +114,56 @@
       ],
       "propSets": [
         {}
+      ]
+    },
+    {
+      "name": "U Bracket",
+      "url": "https://cad.onshape.com/documents/a08d14222e90e9f1b0dcc2e0/w/49d0e4e63c284d22a676a421/e/0a0d655f19eea393b9b994de?configuration=Height%3D0.095%2Bmeter%3BThickness%3D0.004%2Bmeter%3BWide%3D0.03%2Bmeter%3BWidth%3D0.06%2Bmeter%3Bbracket%3D0.03%2Bmeter%3Bhole%3D0.005%2Bmeter&renderMode=0&uiState=69caa3cbd4ac5604f8ec767e",
+      "formats": [
+        "STL",
+        "STEP",
+        "3MF"
+      ],
+      "propSets": [],
+      "permutations": [
+        {
+          "name": "4mm",
+          "props": {
+            "Thickness": [
+              "3mm"
+            ],
+            "Width": [
+              "40mm",
+              "50mm",
+              "60mm",
+              "70mm",
+              "80mm",
+              "90mm",
+              "100mm"
+            ],
+            "Height": [
+              "20mm",
+              "30mm",
+              "40mm",
+              "50mm",
+              "60mm",
+              "70mm",
+              "80mm",
+              "90mm",
+              "100mm"
+            ],
+            "bracket": [
+              "20mm"
+            ],
+            "Wide": [
+              "20mm"
+            ],
+            "hole": [
+              "5 mm"
+            ]
+          },
+          "disable": false
+        }
       ]
     }
   ]

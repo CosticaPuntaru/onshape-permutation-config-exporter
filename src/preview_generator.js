@@ -65,6 +65,8 @@ function renderTile(tris, rotation, translation, color, tileSize, PNG) {
 
     function xform(v) {
         let [x, y, z] = v.map((c, i) => (c - ctr[i]) / sc);
+        // Convert Z-up (OnShape) → Y-up (renderer): old Z becomes new Y, old Y becomes new -Z
+        [y, z] = [z, -y];
         // Rx
         [y, z] = [y * Math.cos(rx) - z * Math.sin(rx), y * Math.sin(rx) + z * Math.cos(rx)];
         // Ry
@@ -127,7 +129,8 @@ function renderTile(tris, rotation, translation, color, tileSize, PNG) {
         // Use stored STL normal for culling; fall back to computed if stored is zero
         let sn = norm3(tri.n.map((_, i) => {
             // rotate stored normal same as vertices (no translate/scale needed for normals)
-            const [x, y, z] = [tri.n[0], tri.n[1], tri.n[2]];
+            // Apply Z-up → Y-up conversion first, then user rotation
+            const [x, y, z] = [tri.n[0], tri.n[2], -tri.n[1]];
             if (i === 0) return x * Math.cos(rz) * Math.cos(ry) + y * (Math.cos(rz) * Math.sin(ry) * Math.sin(rx) - Math.sin(rz) * Math.cos(rx)) + z * (Math.cos(rz) * Math.sin(ry) * Math.cos(rx) + Math.sin(rz) * Math.sin(rx));
             if (i === 1) return x * Math.sin(rz) * Math.cos(ry) + y * (Math.sin(rz) * Math.sin(ry) * Math.sin(rx) + Math.cos(rz) * Math.cos(rx)) + z * (Math.sin(rz) * Math.sin(ry) * Math.cos(rx) - Math.cos(rz) * Math.sin(rx));
             return -x * Math.sin(ry) + y * Math.cos(ry) * Math.sin(rx) + z * Math.cos(ry) * Math.cos(rx);
