@@ -1,13 +1,13 @@
 # Onshape Model Exporter
 
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://costicapuntaru.github.io/onshape-permutation-config-exporter/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://costicapuntaru.github.io/onshape-permutation-config-exporter/USER_MANUAL.html)
 
 Batch-export parametric CAD models from Onshape. Define your parameter combinations once — the tool generates every variant as STL, STEP, 3MF, or IGES, with parallel processing and automatic 3D preview grids.
 
 ## Documentation
 
-For non-programmers, check our [📘 User Manual](docs/USER_MANUAL.md) for simple setup and usage.
-For advanced technical details, see the [Full Documentation](docs/README.md).
+For non-programmers, check our [📘 User Manual](https://costicapuntaru.github.io/onshape-permutation-config-exporter/USER_MANUAL.html) for simple setup and usage.
+For advanced technical details, see the [Full Documentation](https://costicapuntaru.github.io/onshape-permutation-config-exporter/).
 
 ## Disclamer
 
